@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strings"
 
@@ -29,9 +30,11 @@ func AuthMiddleware(jwtSvc service.JWTService) func(http.Handler) http.Handler {
 
 			claims, err := jwtSvc.ValidateToken(parts[1])
 			if err != nil {
+				log.Println("JWT INVALID:", err)
 				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return
 			}
+			log.Println("JWT SUBJECT:", claims.Subject)
 
 			ctx := context.WithValue(r.Context(), userIDKey, claims.Subject)
 			next.ServeHTTP(w, r.WithContext(ctx))

@@ -7,7 +7,7 @@ type User struct {
 	Email string
 	PasswordHash string
 	IsActive bool
-	Roles []Role
+	Roles [] Role
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

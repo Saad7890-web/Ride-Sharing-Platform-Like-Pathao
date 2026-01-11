@@ -111,7 +111,83 @@ func (r *PostgresUserRepository) loadRoles(userID string) []domain.Role {
 }
 
 func (r *PostgresUserRepository) FindByID(id string) (*domain.User, error) {
-	return nil, errors.New("not implemented yet")
+		const query = `
+	SELECT
+		u.id,
+		u.email,
+		r.id,
+		r.name,
+		p.id,
+		p.name
+	FROM users u
+	JOIN user_roles ur ON ur.user_id = u.id
+	JOIN roles r ON r.id = ur.role_id
+	JOIN role_permissions rp ON rp.role_id = r.id
+	JOIN permissions p ON p.id = rp.permission_id
+	WHERE u.id = $1
+	`
+
+	rows, err := r.db.Query(context.Background(), query, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	user := &domain.User{
+		ID:    id,
+		Roles: []domain.Role{},
+	}
+
+	roleMap := make(map[int]*domain.Role)
+
+	for rows.Next() {
+		var (
+			email    string
+			roleID   int
+			roleName string
+			permID   int
+			permName string
+		)
+
+		if err := rows.Scan(
+			&user.ID,
+			&email,
+			&roleID,
+			&roleName,
+			&permID,
+			&permName,
+		); err != nil {
+			return nil, err
+		}
+
+		user.Email = email
+
+		role, exists := roleMap[roleID]
+		if !exists {
+			role = &domain.Role{
+				ID:          roleID,
+				Name:        roleName,
+				Permissions: []domain.Permission{},
+			}
+			roleMap[roleID] = role
+		}
+
+		role.Permissions = append(role.Permissions, domain.Permission{
+			ID:   permID,
+			Name: permName,
+		})
+	}
+
+	
+	for _, role := range roleMap {
+		user.Roles = append(user.Roles, *role)
+	}
+
+	if len(user.Roles) == 0 {
+		return nil, errors.New("user not found or has no roles")
+	}
+
+	return user, nil
 }
 
 func (r *PostgresUserRepository) AssignRole(userID string, roleID int) error {
