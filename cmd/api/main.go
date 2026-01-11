@@ -3,15 +3,17 @@ package main
 import (
 	"context"
 	"log"
-	"net/http"
+
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"ride/internal/auth/service"
 	"ride/internal/config"
 	"ride/internal/database"
-	"ride/internal/health"
+
+	"ride/internal/router"
 	"ride/internal/server"
 )
 
@@ -24,10 +26,11 @@ func main() {
 	}
 	defer db.Close()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", health.Handler)
+	jwtSvc := service.NewJwtService("super-secret-key", 24*time.Hour)
 
-	srv := server.New(":"+cfg.HTTPPort, mux)
+	handler := router.New(db, jwtSvc)
+
+	srv := server.New(":"+cfg.HTTPPort, handler)
 
 
 	go srv.Start()
