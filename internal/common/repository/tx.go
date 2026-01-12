@@ -1,9 +1,12 @@
 package repository
 
-import "context"
+import (
+	"context"
+)
 
 
 type Tx interface {
+	ExecContext(ctx context.Context, query string, args ...any) error
 	Commit() error
 	Rollback() error
 }

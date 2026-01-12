@@ -3,30 +3,33 @@ package usecase
 import (
 	"context"
 	"errors"
+	"time"
+
+	tx "ride/internal/common/repository"
 	"ride/internal/ride/domain"
 	"ride/internal/ride/repository"
-	"time"
 )
 
-
-var ErrNoDriverAvailable = errors.New("No driver available")
-
+var ErrNoDriverAvailable = errors.New("no driver available")
 
 type RideUsecase interface {
 	RequestRide(ctx context.Context, userID string, fare int64) (*domain.Ride, error)
 }
 
 type rideUsecase struct {
-	rideRepo repository.RideRepository
+	txManager tx.TransactionManager
+	rideRepo  repository.RideRepository
 	driverRepo repository.DriverRepository
 }
 
 func NewRideUsecase(
+	txManager tx.TransactionManager,
 	rideRepo repository.RideRepository,
 	driverRepo repository.DriverRepository,
 ) RideUsecase {
 	return &rideUsecase{
-		rideRepo: rideRepo,
+		txManager: txManager,
+		rideRepo:  rideRepo,
 		driverRepo: driverRepo,
 	}
 }
@@ -37,12 +40,14 @@ func (u *rideUsecase) RequestRide(
 	fare int64,
 ) (*domain.Ride, error) {
 
+	
 	drivers, err := u.driverRepo.FindAvailable(ctx, 10)
 	if err != nil || len(drivers) == 0 {
 		return nil, ErrNoDriverAvailable
 	}
 
 	driverCh := make(chan domain.Driver, 1)
+
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -65,6 +70,16 @@ func (u *rideUsecase) RequestRide(
 		return nil, ErrNoDriverAvailable
 	}
 
+	
+	tx, err := u.txManager.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	
+	defer tx.Rollback()
+
+	
 	ride := &domain.Ride{
 		UserID:   userID,
 		DriverID: selected.ID,
@@ -72,11 +87,24 @@ func (u *rideUsecase) RequestRide(
 		Fare:     fare,
 	}
 
-	if err := u.rideRepo.Create(ctx, ride); err != nil {
+	if err := u.rideRepo.Create(ctx, tx, ride); err != nil {
 		return nil, err
 	}
 
-	_ = u.driverRepo.MarkBusy(ctx, selected.ID)
+	if err := u.driverRepo.MarkBusy(ctx, tx, selected.ID); err != nil {
+		return nil, err
+	}
+
+
+	if err := u.rideRepo.AssignDriver(ctx, tx, ride.ID, selected.ID); err != nil {
+		return nil, err
+	}
+
+
+	
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 
 	return ride, nil
 }

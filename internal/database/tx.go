@@ -10,6 +10,15 @@ type postgresTx struct {
 	tx *sql.Tx
 }
 
+func (p *postgresTx) ExecContext(
+	ctx context.Context,
+	query string,
+	args ...any,
+) error {
+	_, err := p.tx.ExecContext(ctx, query, args...)
+	return err
+}
+
 func (p *postgresTx) Commit()error {
 	return p.tx.Commit()
 }
