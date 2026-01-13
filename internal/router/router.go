@@ -2,15 +2,25 @@ package router
 
 import (
 	"net/http"
+
 	"ride/internal/auth/handler"
 	"ride/internal/auth/middleware"
 	"ride/internal/auth/repository"
 	"ride/internal/auth/service"
 	"ride/internal/auth/usecase"
+
+	rideHandler "ride/internal/ride/handler"
+	rideRepoPg "ride/internal/ride/repository"
+	rideUC "ride/internal/ride/usecase"
+
+	"ride/internal/database"
 	"ride/internal/health"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+	
+
 
 
 
@@ -23,18 +33,36 @@ func New(db *pgxpool.Pool, jwtSvc service.JWTService) http.Handler {
 
 	authHandler := handler.NewAuthHandler(authUC)
 
+	
+
 	mux.HandleFunc("/health", health.Handler)
 	mux.HandleFunc("/auth/register", authHandler.Register)
 	mux.HandleFunc("/auth/login", authHandler.Login)
 
-	protected := middleware.AuthMiddleware(jwtSvc)(
+	
+	txManager := database.NewPostgresTxManager(db)
+
+
+	rideRepo := rideRepoPg.NewPostgresRideRepository(db)
+	driverRepo := rideRepoPg.NewPostgresDriverRepository(db)
+
+	rideUC := rideUC.NewRideUsecase(
+		txManager,
+		rideRepo,
+		driverRepo,
+	)
+
+	
+	rideHandler := rideHandler.NewRideHandler(rideUC)
+	
+
+
+	requestRide := middleware.AuthMiddleware(jwtSvc)(
 		middleware.PermissionMiddleware(userRepo, "ride:create")(
-			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request){
-				w.Write([]byte("ACCESS GRANTED"))
-			}),
+			http.HandlerFunc(rideHandler.RequestRide),
 		),
 	)
 
-	mux.Handle("/protected", protected)
+	mux.Handle("/rides/request", requestRide)
 	return mux
 }
